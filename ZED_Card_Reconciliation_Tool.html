@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zed Credit Card Reconciliation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d0f14; --bg2: #13161d; --surface: #1e2330; --surface2: #252b3b;
+    --border: rgba(255,255,255,0.07); --border2: rgba(255,255,255,0.12);
+    --text: #e8eaf0; --text2: #8a92a8; --text3: #555d72;
+    --accent: #00d4a0; --accent-dim: rgba(0,212,160,0.12);
+    --amber: #f5a623; --amber-dim: rgba(245,166,35,0.12);
+    --red: #f05454; --red-dim: rgba(240,84,84,0.12);
+    --blue: #5b9cf6; --blue-dim: rgba(91,156,246,0.12);
+    --font-display: 'Syne', sans-serif; --font-body: 'DM Sans', sans-serif;
+    --font-mono: 'DM Mono', monospace;
+    --radius: 10px; --radius-sm: 6px;
+  }
+  html { scroll-behavior: smooth; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font-body); font-size: 14px; line-height: 1.6; min-height: 100vh; }
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+    background-size: 40px 40px; pointer-events: none; z-index: 0;
+  }
+  .app { position: relative; z-index: 1; max-width: 1280px; margin: 0 auto; padding: 0 24px 80px; }
+
+  /* ── Header ── */
+  .header { padding: 36px 0 28px; border-bottom: 1px solid var(--border); margin-bottom: 32px; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+  .logo-row { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+  .logo-mark { width: 36px; height: 36px; border-radius: 8px; background: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .logo-mark svg { width: 20px; height: 20px; }
+  .brand { font-family: var(--font-display); font-size: 20px; font-weight: 700; color: var(--text); letter-spacing: -0.3px; }
+  .brand span { color: var(--accent); }
+  .tagline { font-size: 13px; color: var(--text2); font-weight: 300; }
+  .header-badge { font-size: 11px; font-family: var(--font-mono); color: var(--text3); border: 1px solid var(--border2); border-radius: 20px; padding: 4px 12px; white-space: nowrap; }
+
+  /* ── Nav tabs (page-level) ── */
+  .page-nav { display: flex; gap: 4px; margin-bottom: 28px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px; width: fit-content; }
+  .page-tab { padding: 7px 18px; border-radius: 7px; font-size: 13px; font-weight: 500; color: var(--text2); cursor: pointer; transition: all 0.18s; display: flex; align-items: center; gap: 7px; white-space: nowrap; border: none; background: transparent; }
+  .page-tab:hover { color: var(--text); }
+  .page-tab.active { background: var(--surface2); color: var(--accent); }
+  .page-tab svg { width: 15px; height: 15px; }
+
+  /* ── Section label ── */
+  .section-label { font-family: var(--font-display); font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text3); margin-bottom: 14px; }
+
+  /* ── How it works ── */
+  .how-it-works { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 24px; margin-bottom: 24px; }
+  .how-row { display: flex; gap: 0; flex-wrap: wrap; }
+  .how-step { flex: 1; min-width: 180px; padding: 0 20px; border-right: 1px solid var(--border); }
+  .how-step:first-child { padding-left: 0; }
+  .how-step:last-child { border-right: none; }
+  .how-step-num { font-family: var(--font-mono); font-size: 10px; color: var(--accent); margin-bottom: 6px; letter-spacing: 0.08em; }
+  .how-step-title { font-family: var(--font-display); font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+  .how-step-desc { font-size: 12px; color: var(--text2); line-height: 1.5; }
+
+  /* ── Upload cards ── */
+  .upload-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 20px; }
+  .upload-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; transition: border-color 0.2s, background 0.2s; }
+  .upload-card:hover { border-color: var(--border2); background: var(--surface2); }
+  .upload-card.ready { border-color: var(--accent); background: rgba(0,212,160,0.04); }
+  .card-source-tag { font-family: var(--font-mono); font-size: 10px; color: var(--text3); margin-bottom: 10px; letter-spacing: 0.08em; }
+  .card-title { font-family: var(--font-display); font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+  .card-desc { font-size: 12px; color: var(--text2); line-height: 1.5; margin-bottom: 12px; }
+  .card-key { font-family: var(--font-mono); font-size: 11px; color: var(--accent); background: var(--accent-dim); padding: 3px 8px; border-radius: 4px; display: inline-block; margin-bottom: 12px; }
+  .multi-tag { font-size: 10px; color: var(--blue); background: var(--blue-dim); border-radius: 4px; padding: 2px 7px; display: inline-block; margin-bottom: 10px; font-family: var(--font-mono); }
+  .card-icon { font-size: 20px; color: var(--text3); margin-bottom: 10px; line-height: 1; }
+  .upload-zone { border: 1px dashed var(--border2); border-radius: var(--radius-sm); padding: 14px; text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s; position: relative; }
+  .upload-zone:hover { border-color: var(--accent); background: var(--accent-dim); }
+  .upload-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .upload-zone-text { font-size: 12px; color: var(--text2); pointer-events: none; }
+  .upload-zone-text strong { color: var(--accent); font-weight: 500; }
+  .file-status { margin-top: 10px; font-size: 11px; color: var(--text3); min-height: 16px; font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-status.ok { color: var(--accent); }
+
+  /* ── Run row ── */
+  .run-row { display: flex; gap: 12px; align-items: center; margin-bottom: 0; }
+  .run-btn { display: flex; align-items: center; gap: 10px; padding: 12px 28px; background: var(--accent); color: #051a14; border: none; border-radius: var(--radius-sm); font-family: var(--font-display); font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity 0.2s, transform 0.15s; }
+  .run-btn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+  .run-btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
+  .run-btn svg { width: 16px; height: 16px; }
+  .clear-btn { padding: 12px 20px; background: transparent; color: var(--text2); border: 1px solid var(--border2); border-radius: var(--radius-sm); font-family: var(--font-body); font-size: 13px; cursor: pointer; transition: all 0.2s; display: none; }
+  .clear-btn:hover { border-color: var(--red); color: var(--red); }
+
+  /* Progress */
+  .progress-wrap { flex: 1; display: none; }
+  .progress-label { font-size: 12px; color: var(--text2); margin-bottom: 6px; font-family: var(--font-mono); }
+  .progress-bar-bg { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .progress-bar { height: 100%; background: var(--accent); width: 0%; transition: width 0.3s ease; border-radius: 2px; }
+
+  /* ── Pages ── */
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* ── Metric cards ── */
+  .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+  .metric { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+  .metric.green { border-color: rgba(0,212,160,0.25); }
+  .metric.amber { border-color: rgba(245,166,35,0.25); }
+  .metric.red { border-color: rgba(240,84,84,0.25); }
+  .metric-label { font-size: 11px; color: var(--text3); font-family: var(--font-mono); letter-spacing: 0.06em; margin-bottom: 8px; text-transform: uppercase; }
+  .metric-value { font-family: var(--font-display); font-size: 28px; font-weight: 700; line-height: 1; }
+  .metric-value.green { color: var(--accent); }
+  .metric-value.amber { color: var(--amber); }
+  .metric-value.red { color: var(--red); }
+  .metric-sub { font-size: 12px; color: var(--text2); margin-top: 4px; }
+
+  /* ── Legend ── */
+  .legend-row { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 16px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text2); }
+  .legend-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+
+  /* ── Tab bar (inner) ── */
+  .tab-bar { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 16px; overflow-x: auto; }
+  .tab { padding: 9px 18px; font-size: 13px; color: var(--text2); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; transition: color 0.2s; display: flex; align-items: center; gap: 7px; border: none; background: transparent; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom: 2px solid var(--accent); font-weight: 500; }
+  .tab-count { font-size: 11px; font-family: var(--font-mono); background: var(--surface2); color: var(--text3); padding: 1px 6px; border-radius: 10px; }
+  .tab.active .tab-count { background: var(--accent-dim); color: var(--accent); }
+
+  /* ── Filter row ── */
+  .filter-row { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+  .search-wrap { position: relative; flex: 1; min-width: 200px; max-width: 340px; }
+  .search-wrap svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--text3); pointer-events: none; }
+  .search-input { width: 100%; padding: 8px 12px 8px 30px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-family: var(--font-body); font-size: 13px; outline: none; transition: border-color 0.2s; }
+  .search-input:focus { border-color: var(--accent); }
+  .search-input::placeholder { color: var(--text3); }
+  .filter-select { padding: 8px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text2); font-family: var(--font-body); font-size: 13px; outline: none; cursor: pointer; }
+  .filter-select option { background: var(--bg2); }
+  .export-btn { display: flex; align-items: center; gap: 6px; padding: 8px 16px; background: var(--surface); border: 1px solid var(--border2); border-radius: var(--radius-sm); color: var(--text2); font-family: var(--font-body); font-size: 13px; cursor: pointer; transition: all 0.2s; margin-left: auto; }
+  .export-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .export-btn svg { width: 14px; height: 14px; }
+
+  /* ── Table ── */
+  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 860px; }
+  thead th { background: var(--bg2); color: var(--text3); font-family: var(--font-mono); font-weight: 500; font-size: 11px; letter-spacing: 0.05em; padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--surface2); }
+  td { padding: 9px 14px; color: var(--text); vertical-align: middle; }
+  .td-mono { font-family: var(--font-mono); font-size: 11.5px; color: var(--text2); }
+  .td-center { text-align: center; }
+  .check-yes { color: var(--accent); font-size: 15px; }
+  .check-no { color: var(--text3); font-size: 15px; }
+  .tbl-footer { padding: 10px 14px; font-size: 11px; color: var(--text3); font-family: var(--font-mono); background: var(--bg2); border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+
+  /* ── Badges ── */
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-family: var(--font-mono); font-weight: 500; white-space: nowrap; }
+  .badge-dot { width: 5px; height: 5px; border-radius: 50%; }
+  .badge-matched { background: var(--accent-dim); color: var(--accent); }
+  .badge-matched .badge-dot { background: var(--accent); }
+  .badge-partial { background: var(--amber-dim); color: var(--amber); }
+  .badge-partial .badge-dot { background: var(--amber); }
+  .badge-missing { background: var(--red-dim); color: var(--red); }
+  .badge-missing .badge-dot { background: var(--red); }
+  .badge-extra { background: var(--blue-dim); color: var(--blue); }
+  .badge-extra .badge-dot { background: var(--blue); }
+
+  /* ── Daily summary table ── */
+  .daily-table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .daily-table { min-width: 780px; }
+  .daily-table thead th { padding: 10px 16px; }
+  .daily-table td { padding: 11px 16px; }
+  .day-row { cursor: pointer; }
+  .day-row:hover { background: var(--surface2) !important; }
+  .day-row.expanded { background: rgba(0,212,160,0.04) !important; }
+  .variance-detail-row { display: none; }
+  .variance-detail-row.open { display: table-row; }
+  .variance-detail-inner { background: var(--bg2); padding: 16px 20px; }
+  .variance-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .variance-chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-family: var(--font-mono); }
+  .chip-missing-ide { background: rgba(240,84,84,0.12); color: var(--red); }
+  .chip-missing-jt { background: rgba(245,166,35,0.12); color: var(--amber); }
+  .chip-extra { background: var(--blue-dim); color: var(--blue); }
+  .chip-partial { background: rgba(160,130,250,0.12); color: #a08cfa; }
+  .variance-summary-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+  .vpill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-family: var(--font-mono); }
+
+  /* ── Bar spark ── */
+  .spark-wrap { display: flex; align-items: center; gap: 8px; }
+  .spark-bar { height: 6px; border-radius: 3px; background: var(--border); flex: 1; min-width: 60px; overflow: hidden; }
+  .spark-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
+
+  /* ── Empty state ── */
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--text3); }
+  .empty-state .icon { font-size: 38px; margin-bottom: 12px; }
+  .empty-state p { font-size: 14px; color: var(--text2); }
+  .empty-state small { font-size: 12px; color: var(--text3); display: block; margin-top: 4px; }
+
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .fade-in { animation: fadeUp 0.35s ease both; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+  @media (max-width: 860px) {
+    .upload-grid { grid-template-columns: 1fr; }
+    .summary-grid { grid-template-columns: repeat(2, 1fr); }
+    .how-step { min-width: 100%; border-right: none; border-bottom: 1px solid var(--border); padding: 12px 0; }
+    .how-step:last-child { border-bottom: none; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Header -->
+  <div class="header">
+    <div>
+      <div class="logo-row">
+        <div class="logo-mark">
+          <svg viewBox="0 0 20 20" fill="none"><circle cx="5" cy="5" r="2.5" fill="#051a14"/><circle cx="15" cy="5" r="2.5" fill="#051a14"/><circle cx="10" cy="15" r="2.5" fill="#051a14"/><line x1="5" y1="5" x2="15" y2="5" stroke="#051a14" stroke-width="1.5"/><line x1="5" y1="5" x2="10" y2="15" stroke="#051a14" stroke-width="1.5"/><line x1="15" y1="5" x2="10" y2="15" stroke="#051a14" stroke-width="1.5"/></svg>
+        </div>
+        <div class="brand">Zed <span>Credit Card</span> Reconciliation</div>
+      </div>
+      <div class="tagline">Monthly card issuance recon · i2c · Idemia · J&T</div>
+    </div>
+    <div class="header-badge">Recon Tool v1.1</div>
+  </div>
+
+  <!-- Upload section (always visible) -->
+  <div id="upload-section">
+    <div class="how-it-works">
+      <div class="section-label" style="margin-bottom:14px">How it works</div>
+      <div class="how-row">
+        <div class="how-step">
+          <div class="how-step-num">STEP 01</div>
+          <div class="how-step-title">Upload 3 sources</div>
+          <div class="how-step-desc">i2c batches CSV, Idemia courier Excel files (one or many), and J&T pickup Excel file.</div>
+        </div>
+        <div class="how-step">
+          <div class="how-step-num">STEP 02</div>
+          <div class="how-step-title">Match by card ref</div>
+          <div class="how-step-desc">Card Ref No (i2c) = Control Number (Idemia) = Remarks (J&T). Records are linked across all three.</div>
+        </div>
+        <div class="how-step">
+          <div class="how-step-num">STEP 03</div>
+          <div class="how-step-title">Review & export</div>
+          <div class="how-step-desc">Daily summary shows match status per batch date. Drill into detail records and export any view.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-label">Upload source files</div>
+    <div class="upload-grid">
+      <div class="upload-card" id="card-i2c">
+        <div class="card-source-tag">SOURCE 01 · i2c</div>
+        <div class="card-icon">⚡</div>
+        <div class="card-title">i2c report</div>
+        <div class="card-desc">Daily card issuance batches. One CSV file covering the full month.</div>
+        <div class="card-key">Card Ref No</div>
+        <div class="upload-zone" ondrop="dropFile(event,'i2c')" ondragover="event.preventDefault()" ondragenter="this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor=''">
+          <input type="file" id="file-i2c" accept=".csv" onchange="handleFile('i2c',this)">
+          <div class="upload-zone-text"><strong>Click to browse</strong> or drag &amp; drop<br>CSV format</div>
+        </div>
+        <div class="file-status" id="status-i2c">No file selected</div>
+      </div>
+      <div class="upload-card" id="card-idemia">
+        <div class="card-source-tag">SOURCE 02 · Idemia</div>
+        <div class="card-icon">🖨</div>
+        <div class="card-title">Idemia courier report</div>
+        <div class="card-desc">Daily dispatch files from the card printing vendor.</div>
+        <div class="card-key">Control Number</div>
+        <span class="multi-tag">MULTI-FILE</span>
+        <div class="upload-zone" ondrop="dropFile(event,'idemia')" ondragover="event.preventDefault()" ondragenter="this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor=''">
+          <input type="file" id="file-idemia" accept=".xlsx,.xls" multiple onchange="handleFile('idemia',this)">
+          <div class="upload-zone-text"><strong>Click to browse</strong> or drag &amp; drop<br>Excel format · select all daily files</div>
+        </div>
+        <div class="file-status" id="status-idemia">No files selected</div>
+      </div>
+      <div class="upload-card" id="card-jt">
+        <div class="card-source-tag">SOURCE 03 · J&T</div>
+        <div class="card-icon">🚚</div>
+        <div class="card-title">J&T file</div>
+        <div class="card-desc">Cards picked up from Idemia for delivery. One Excel file for the month.</div>
+        <div class="card-key">Remarks column</div>
+        <div class="upload-zone" ondrop="dropFile(event,'jt')" ondragover="event.preventDefault()" ondragenter="this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor=''">
+          <input type="file" id="file-jt" accept=".xlsx,.xls" onchange="handleFile('jt',this)">
+          <div class="upload-zone-text"><strong>Click to browse</strong> or drag &amp; drop<br>Excel format</div>
+        </div>
+        <div class="file-status" id="status-jt">No file selected</div>
+      </div>
+    </div>
+
+    <div class="run-row">
+      <button class="run-btn" id="run-btn" onclick="runRecon()" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        Run reconciliation
+      </button>
+      <button class="clear-btn" id="clear-btn" onclick="clearAll()">Clear &amp; reset</button>
+      <div class="progress-wrap" id="progress-wrap">
+        <div class="progress-label" id="progress-label">Loading files…</div>
+        <div class="progress-bar-bg"><div class="progress-bar" id="progress-bar"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results (shown after run) -->
+  <div id="results-section" style="display:none; margin-top:32px;">
+
+    <!-- Page nav -->
+    <div class="page-nav" id="page-nav">
+      <button class="page-tab active" onclick="showPage('summary', this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        Daily summary
+      </button>
+      <button class="page-tab" onclick="showPage('detail', this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        Detail records
+      </button>
+    </div>
+
+    <!-- ── PAGE: Daily Summary ── -->
+    <div class="page active fade-in" id="page-summary">
+
+      <div class="summary-grid" id="summary-metrics"></div>
+
+      <div class="section-label" style="margin-bottom:12px">Daily breakdown by batch date (i2c)</div>
+      <div class="filter-row" style="margin-bottom:14px">
+        <div class="search-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          <input type="text" class="search-input" id="day-search" placeholder="Filter by date…" oninput="renderDailyTable()" style="max-width:220px">
+        </div>
+        <select class="filter-select" id="day-status-filter" onchange="renderDailyTable()">
+          <option value="">All days</option>
+          <option value="matched">100% matched</option>
+          <option value="variance">With variance</option>
+        </select>
+        <button class="export-btn" onclick="exportDailySummaryCSV()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export summary CSV
+        </button>
+      </div>
+
+      <div class="daily-table-wrap">
+        <div class="table-scroll">
+          <table class="daily-table">
+            <thead>
+              <tr>
+                <th style="width:130px">Batch date</th>
+                <th style="width:80px;text-align:center">Cards</th>
+                <th style="width:80px;text-align:center">Matched</th>
+                <th style="width:80px;text-align:center">Variance</th>
+                <th style="width:120px">Match rate</th>
+                <th style="width:120px">Status</th>
+                <th>Variance breakdown</th>
+              </tr>
+            </thead>
+            <tbody id="daily-tbody"></tbody>
+          </table>
+        </div>
+        <div class="tbl-footer">
+          <span id="daily-count"></span>
+          <span>Click a row to expand variance details</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── PAGE: Detail Records ── -->
+    <div class="page" id="page-detail">
+      <div class="summary-grid" id="detail-metrics"></div>
+
+      <div class="legend-row">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div>Matched in all 3 sources</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--amber)"></div>Partial — found in some sources</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div>Missing — in i2c only</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--blue)"></div>Extra — not in i2c</div>
+      </div>
+
+      <div class="tab-bar" id="tab-bar"></div>
+
+      <div class="filter-row">
+        <div class="search-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          <input type="text" class="search-input" id="search-input" placeholder="Search card ref no or cardholder…" oninput="onSearch(this.value)">
+        </div>
+        <select class="filter-select" id="status-filter" onchange="applyFilter()">
+          <option value="">All statuses</option>
+          <option value="matched">Matched</option>
+          <option value="partial">Partial</option>
+          <option value="missing">Missing</option>
+          <option value="extra">Extra</option>
+        </select>
+        <button class="export-btn" onclick="exportDetailCSV()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export CSV
+        </button>
+      </div>
+
+      <div class="table-wrap">
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:130px">Card ref no</th>
+                <th style="width:90px">Status</th>
+                <th style="width:105px">Batch date (i2c)</th>
+                <th style="width:110px">Dispatch date (Idemia)</th>
+                <th style="width:110px">Submission date (J&T)</th>
+                <th style="width:42px;text-align:center">i2c</th>
+                <th style="width:42px;text-align:center">Idemia</th>
+                <th style="width:42px;text-align:center">J&T</th>
+                <th>Cardholder</th>
+                <th style="width:90px">Card status</th>
+                <th style="width:90px">Delivery</th>
+              </tr>
+            </thead>
+            <tbody id="tbl-body"></tbody>
+          </table>
+        </div>
+        <div class="tbl-footer">
+          <span id="tbl-count"></span>
+          <span>All processing done locally — no data sent anywhere</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════
+   STATE
+═══════════════════════════════════════════════ */
+const appState = { i2c: null, idemia: [], jt: null };
+let allRows = [], dailySummary = [], currentTab = 'all', searchTerm = '';
+
+/* ═══════════════════════════════════════════════
+   FILE HANDLING
+═══════════════════════════════════════════════ */
+function dropFile(e, source) {
+  e.preventDefault();
+  handleFile(source, { files: e.dataTransfer.files });
+}
+
+function handleFile(source, input) {
+  const files = Array.from(input.files);
+  if (!files.length) return;
+  const card = document.getElementById('card-' + source);
+  const status = document.getElementById('status-' + source);
+  if (source === 'idemia') {
+    appState.idemia = files;
+    card.classList.add('ready');
+    status.textContent = files.length + ' file' + (files.length > 1 ? 's' : '') + ' selected';
+    status.className = 'file-status ok';
+  } else {
+    appState[source] = files[0];
+    card.classList.add('ready');
+    status.textContent = files[0].name;
+    status.className = 'file-status ok';
+  }
+  checkReady();
+}
+
+function checkReady() {
+  document.getElementById('run-btn').disabled = !(appState.i2c && appState.idemia.length > 0 && appState.jt);
+}
+
+function clearAll() {
+  appState.i2c = null; appState.idemia = []; appState.jt = null;
+  ['i2c','idemia','jt'].forEach(s => {
+    document.getElementById('card-' + s).classList.remove('ready');
+    document.getElementById('status-' + s).textContent = s === 'idemia' ? 'No files selected' : 'No file selected';
+    document.getElementById('status-' + s).className = 'file-status';
+    document.getElementById('file-' + s).value = '';
+  });
+  checkReady();
+  document.getElementById('clear-btn').style.display = 'none';
+  document.getElementById('results-section').style.display = 'none';
+}
+
+/* ═══════════════════════════════════════════════
+   PROGRESS
+═══════════════════════════════════════════════ */
+function setProgress(pct, label) {
+  const wrap = document.getElementById('progress-wrap');
+  const bar = document.getElementById('progress-bar');
+  const lbl = document.getElementById('progress-label');
+  if (pct === 0) { wrap.style.display = 'block'; bar.style.width = '0%'; }
+  if (label) lbl.textContent = label;
+  bar.style.width = pct + '%';
+  if (pct >= 100) setTimeout(() => { wrap.style.display = 'none'; }, 600);
+}
+
+/* ═══════════════════════════════════════════════
+   PARSERS
+═══════════════════════════════════════════════ */
+function readCSV(file) {
+  return new Promise(res => Papa.parse(file, { header: true, skipEmptyLines: true, complete: r => res(r.data) }));
+}
+function readXLSX(file) {
+  return new Promise(res => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      res(XLSX.utils.sheet_to_json(ws, { defval: '' }));
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function norm(v) {
+  if (v === null || v === undefined || v === '') return '';
+  return String(v).trim().replace(/\.0$/, '');
+}
+
+function fmtDate(v) {
+  if (!v) return '';
+  if (v instanceof Date && !isNaN(v)) return v.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+  const d = new Date(v);
+  if (!isNaN(d)) return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+  return String(v).split(' ')[0];
+}
+
+/* Date-only — strips time portion from datetime strings like "2026-05-07 13:40:36" */
+function fmtDateOnly(v) {
+  if (!v) return '';
+  if (v instanceof Date && !isNaN(v)) return v.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+  const s = String(v).trim();
+  // Take only the date part before any space/T
+  const datePart = s.split(/[\sT]/)[0];
+  const d = new Date(datePart + 'T00:00:00');
+  if (!isNaN(d)) return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+  return datePart;
+}
+
+/* Normalize batch date to a sortable string YYYY-MM-DD */
+function normBatchDate(v) {
+  if (!v) return '';
+  // e.g. "04/01/2026" → "2026-04-01"
+  const s = String(v).trim();
+  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (m) return `${m[3]}-${m[1]}-${m[2]}`;
+  const d = new Date(v);
+  if (!isNaN(d)) return d.toISOString().slice(0, 10);
+  return s;
+}
+
+function fmtBatchDate(iso) {
+  const d = new Date(iso + 'T00:00:00');
+  if (isNaN(d)) return iso;
+  return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+/* ═══════════════════════════════════════════════
+   MAIN RECONCILIATION
+═══════════════════════════════════════════════ */
+async function runRecon() {
+  const btn = document.getElementById('run-btn');
+  btn.disabled = true;
+  btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="animation:spin 1s linear infinite"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Processing…`;
+
+  try {
+    setProgress(5, 'Reading i2c CSV…');
+    const i2cRaw = await readCSV(appState.i2c);
+    setProgress(20, 'Reading Idemia files…');
+    const ideRows = [];
+    for (let i = 0; i < appState.idemia.length; i++) {
+      ideRows.push(...(await readXLSX(appState.idemia[i])));
+      setProgress(20 + Math.round(45 * (i + 1) / appState.idemia.length), `Reading Idemia file ${i + 1} of ${appState.idemia.length}…`);
+    }
+    setProgress(70, 'Reading J&T file…');
+    const jtRaw = await readXLSX(appState.jt);
+    setProgress(82, 'Matching records…');
+
+    const i2cMap = new Map();
+    i2cRaw.forEach(r => { const k = norm(r['Card Ref No']); if (k) i2cMap.set(k, r); });
+    const ideMap = new Map();
+    ideRows.forEach(r => { const k = norm(r['ControlNumber']); if (k) ideMap.set(k, r); });
+    const jtMap = new Map();
+    jtRaw.forEach(r => { const k = norm(r['Remarks']); if (k) jtMap.set(k, r); });
+
+    const allKeys = new Set([...i2cMap.keys(), ...ideMap.keys(), ...jtMap.keys()]);
+    allRows = [];
+    allKeys.forEach(key => {
+      const i2c = i2cMap.get(key);
+      const ide = ideMap.get(key);
+      const jt  = jtMap.get(key);
+      const inI2c = !!i2c, inIde = !!ide, inJt = !!jt;
+      let status = 'matched';
+      if (inI2c && inIde && inJt) status = 'matched';
+      else if (!inI2c) status = 'extra';
+      else if (inI2c && !inIde && !inJt) status = 'missing';
+      else status = 'partial';
+
+      // For partial, identify what's missing
+      let varianceType = '';
+      if (status === 'partial') {
+        const parts = [];
+        if (!inIde) parts.push('missing in Idemia');
+        if (!inJt)  parts.push('missing in J&T');
+        varianceType = parts.join(', ');
+      } else if (status === 'missing') {
+        varianceType = 'missing in Idemia & J&T';
+      } else if (status === 'extra') {
+        varianceType = 'not in i2c';
+      }
+
+      allRows.push({
+        key, status, inI2c, inIde, inJt, varianceType,
+        batchDateRaw: i2c ? norm(i2c['Batch Date']) : '',
+        batchDateISO: i2c ? normBatchDate(i2c['Batch Date']) : '',
+        dispatchDate: ide ? fmtDate(ide['DispatchDate']) : '',
+        signingDate:  jt  ? fmtDateOnly(jt['Submission Time']) : '',
+        cardholderI2c: i2c ? norm(i2c['Cardholder Name']) : '',
+        cardholderIde: ide ? norm(ide['CardHolderName'])  : '',
+        receiver:      jt  ? norm(jt['Receiver'])          : '',
+        cardStatus:    i2c ? norm(i2c['Card Status'])      : '',
+        orderStatus:   jt  ? norm(jt['Order Status'])      : '',
+      });
+    });
+
+    setProgress(92, 'Building daily summary…');
+    buildDailySummary();
+    setProgress(100, 'Done');
+
+    renderAll();
+
+  } catch (err) {
+    alert('Error: ' + err.message + '\n\nCheck that your files match the expected format.');
+    setProgress(100);
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Run reconciliation`;
+  document.getElementById('clear-btn').style.display = 'block';
+}
+
+/* ═══════════════════════════════════════════════
+   DAILY SUMMARY BUILD
+═══════════════════════════════════════════════ */
+function buildDailySummary() {
+  const byDate = new Map();
+
+  allRows.forEach(r => {
+    const key = r.batchDateISO || '__no_date__';
+    if (!byDate.has(key)) byDate.set(key, { dateISO: key, rows: [] });
+    byDate.get(key).rows.push(r);
+  });
+
+  dailySummary = Array.from(byDate.values())
+    .sort((a, b) => a.dateISO.localeCompare(b.dateISO))
+    .map(d => {
+      const total    = d.rows.length;
+      const matched  = d.rows.filter(r => r.status === 'matched').length;
+      const partial  = d.rows.filter(r => r.status === 'partial').length;
+      const missing  = d.rows.filter(r => r.status === 'missing').length;
+      const extra    = d.rows.filter(r => r.status === 'extra').length;
+      const variance = total - matched;
+      const matchPct = total > 0 ? Math.round(matched / total * 100) : 0;
+      const hasVariance = variance > 0;
+
+      // Variance breakdown counts
+      const missingIde  = d.rows.filter(r => !r.inIde && r.inI2c).length;  // not in Idemia
+      const missingJt   = d.rows.filter(r => !r.inJt  && r.inI2c).length;  // not in J&T
+      const notInI2c    = d.rows.filter(r => !r.inI2c).length;              // extra / not in i2c
+
+      return { dateISO: d.dateISO, total, matched, partial, missing, extra, variance, matchPct, hasVariance, missingIde, missingJt, notInI2c, rows: d.rows };
+    });
+}
+
+/* ═══════════════════════════════════════════════
+   RENDER ALL
+═══════════════════════════════════════════════ */
+function renderAll() {
+  document.getElementById('results-section').style.display = 'block';
+  document.getElementById('results-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  const matched = allRows.filter(r => r.status === 'matched').length;
+  const partial  = allRows.filter(r => r.status === 'partial').length;
+  const missing  = allRows.filter(r => r.status === 'missing').length;
+  const extra    = allRows.filter(r => r.status === 'extra').length;
+  const total    = allRows.length;
+  const matchPct = total ? Math.round(matched / total * 100) : 0;
+
+  const metricsHTML = `
+    <div class="metric"><div class="metric-label">Total records</div><div class="metric-value">${total.toLocaleString()}</div><div class="metric-sub">across all 3 sources</div></div>
+    <div class="metric green"><div class="metric-label">Fully matched</div><div class="metric-value green">${matched.toLocaleString()}</div><div class="metric-sub">${matchPct}% match rate</div></div>
+    <div class="metric amber"><div class="metric-label">Partial match</div><div class="metric-value amber">${partial.toLocaleString()}</div><div class="metric-sub">found in some sources</div></div>
+    <div class="metric red"><div class="metric-label">Missing / extra</div><div class="metric-value red">${(missing + extra).toLocaleString()}</div><div class="metric-sub">${missing} missing · ${extra} extra</div></div>`;
+  document.getElementById('summary-metrics').innerHTML = metricsHTML;
+  document.getElementById('detail-metrics').innerHTML = metricsHTML;
+
+  renderDailyTable();
+  renderDetailTabs(matched, partial, missing, extra, total);
+  currentTab = 'all'; searchTerm = '';
+  applyFilter();
+}
+
+/* ═══════════════════════════════════════════════
+   PAGE SWITCHING
+═══════════════════════════════════════════════ */
+function showPage(name, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.page-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  el.classList.add('active');
+}
+
+/* ═══════════════════════════════════════════════
+   DAILY SUMMARY TABLE
+═══════════════════════════════════════════════ */
+function renderDailyTable() {
+  const search = (document.getElementById('day-search')?.value || '').toLowerCase();
+  const statusF = document.getElementById('day-status-filter')?.value || '';
+
+  let rows = dailySummary;
+  if (search) rows = rows.filter(d => fmtBatchDate(d.dateISO).toLowerCase().includes(search) || d.dateISO.includes(search));
+  if (statusF === 'matched') rows = rows.filter(d => !d.hasVariance);
+  if (statusF === 'variance') rows = rows.filter(d => d.hasVariance);
+
+  const tbody = document.getElementById('daily-tbody');
+  const countEl = document.getElementById('daily-count');
+  if (!tbody) return;
+
+  tbody.innerHTML = rows.map((d, i) => {
+    const fillColor = d.matchPct === 100 ? 'var(--accent)' : d.matchPct >= 80 ? 'var(--amber)' : 'var(--red)';
+    const statusBadge = d.hasVariance
+      ? `<span class="badge badge-partial"><span class="badge-dot"></span>Variance</span>`
+      : `<span class="badge badge-matched"><span class="badge-dot"></span>100% Matched</span>`;
+
+    // Variance breakdown pills
+    let vpills = '';
+    if (d.hasVariance) {
+      if (d.missingIde > 0) vpills += `<span class="vpill chip-missing-ide">Missing in Idemia: ${d.missingIde}</span>`;
+      if (d.missingJt > 0)  vpills += `<span class="vpill chip-missing-jt">Missing in J&T: ${d.missingJt}</span>`;
+      if (d.notInI2c > 0)   vpills += `<span class="vpill chip-extra">Not in i2c: ${d.notInI2c}</span>`;
+    } else {
+      vpills = `<span style="font-size:12px;color:var(--text3)">—</span>`;
+    }
+
+    return `
+      <tr class="day-row ${d.hasVariance ? '' : ''}" id="dayrow-${i}" onclick="toggleDayDetail(${i})">
+        <td style="font-weight:500;color:var(--text)">${fmtBatchDate(d.dateISO)}</td>
+        <td class="td-center" style="font-family:var(--font-mono);font-weight:600">${d.total}</td>
+        <td class="td-center" style="font-family:var(--font-mono);color:var(--accent)">${d.matched}</td>
+        <td class="td-center" style="font-family:var(--font-mono);color:${d.variance > 0 ? 'var(--red)' : 'var(--text3)'}">${d.variance > 0 ? d.variance : '—'}</td>
+        <td>
+          <div class="spark-wrap">
+            <div class="spark-bar"><div class="spark-fill" style="width:${d.matchPct}%;background:${fillColor}"></div></div>
+            <span style="font-family:var(--font-mono);font-size:11px;color:${fillColor};min-width:32px">${d.matchPct}%</span>
+          </div>
+        </td>
+        <td>${statusBadge}</td>
+        <td><div class="variance-summary-pills">${vpills}</div></td>
+      </tr>
+      <tr class="variance-detail-row" id="detail-${i}">
+        <td colspan="7" style="padding:0">
+          <div class="variance-detail-inner" id="detail-inner-${i}"></div>
+        </td>
+      </tr>`;
+  }).join('');
+
+  countEl.textContent = `${rows.length} batch date${rows.length !== 1 ? 's' : ''}`;
+}
+
+function toggleDayDetail(i) {
+  const detailRow = document.getElementById('detail-' + i);
+  const dayRow = document.getElementById('dayrow-' + i);
+  const inner = document.getElementById('detail-inner-' + i);
+  const isOpen = detailRow.classList.contains('open');
+
+  // Close all
+  document.querySelectorAll('.variance-detail-row').forEach(r => r.classList.remove('open'));
+  document.querySelectorAll('.day-row').forEach(r => r.classList.remove('expanded'));
+
+  if (!isOpen) {
+    detailRow.classList.add('open');
+    dayRow.classList.add('expanded');
+
+    // Find the day entry
+    const search = (document.getElementById('day-search')?.value || '').toLowerCase();
+    const statusF = document.getElementById('day-status-filter')?.value || '';
+    let rows = dailySummary;
+    if (search) rows = rows.filter(d => fmtBatchDate(d.dateISO).toLowerCase().includes(search) || d.dateISO.includes(search));
+    if (statusF === 'matched') rows = rows.filter(d => !d.hasVariance);
+    if (statusF === 'variance') rows = rows.filter(d => d.hasVariance);
+    const day = rows[i];
+    if (!day) return;
+
+    const varRows = day.rows.filter(r => r.status !== 'matched');
+    if (!varRows.length) {
+      inner.innerHTML = `<p style="font-size:12px;color:var(--accent)">✓ All ${day.total} records fully matched for this date.</p>`;
+      return;
+    }
+
+    const grouped = {};
+    varRows.forEach(r => {
+      const vt = r.varianceType || r.status;
+      if (!grouped[vt]) grouped[vt] = [];
+      grouped[vt].push(r);
+    });
+
+    let html = `<div style="font-size:12px;font-family:var(--font-mono);color:var(--text2);margin-bottom:12px">${varRows.length} card${varRows.length !== 1 ? 's' : ''} with variance on ${fmtBatchDate(day.dateISO)}</div>`;
+
+    Object.entries(grouped).forEach(([type, rws]) => {
+      const cls = type.includes('Idemia') && type.includes('J&T') ? 'chip-missing-ide'
+                : type.includes('Idemia') ? 'chip-missing-ide'
+                : type.includes('J&T')   ? 'chip-missing-jt'
+                : type.includes('i2c')   ? 'chip-extra'
+                : 'chip-partial';
+      html += `<div style="margin-bottom:14px">
+        <div style="font-size:11px;font-family:var(--font-mono);color:var(--text2);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.06em">
+          <span class="variance-chip ${cls}">${type}</span>
+          <span style="margin-left:8px">${rws.length} card${rws.length !== 1 ? 's' : ''}</span>
+        </div>
+        <div style="overflow-x:auto;border:1px solid var(--border);border-radius:6px;">
+          <table style="min-width:600px;width:100%">
+            <thead><tr>
+              <th style="padding:7px 12px;background:var(--bg);color:var(--text3);font-family:var(--font-mono);font-size:10px;border-bottom:1px solid var(--border);text-align:left;letter-spacing:0.05em">Card ref no</th>
+              <th style="padding:7px 12px;background:var(--bg);color:var(--text3);font-family:var(--font-mono);font-size:10px;border-bottom:1px solid var(--border);text-align:left">Cardholder</th>
+              <th style="padding:7px 12px;background:var(--bg);color:var(--text3);font-family:var(--font-mono);font-size:10px;border-bottom:1px solid var(--border);text-align:center">i2c</th>
+              <th style="padding:7px 12px;background:var(--bg);color:var(--text3);font-family:var(--font-mono);font-size:10px;border-bottom:1px solid var(--border);text-align:center">Idemia</th>
+              <th style="padding:7px 12px;background:var(--bg);color:var(--text3);font-family:var(--font-mono);font-size:10px;border-bottom:1px solid var(--border);text-align:center">J&T</th>
+              <th style="padding:7px 12px;background:var(--bg);color:var(--text3);font-family:var(--font-mono);font-size:10px;border-bottom:1px solid var(--border);text-align:left">Card status</th>
+            </tr></thead>
+            <tbody>
+              ${rws.map((r, ri) => `<tr style="border-bottom:${ri < rws.length - 1 ? '1px solid var(--border)' : 'none'}">
+                <td style="padding:7px 12px;font-family:var(--font-mono);font-size:11px;color:var(--text2)">${r.key}</td>
+                <td style="padding:7px 12px;font-size:12px;color:var(--text)">${r.cardholderI2c || r.cardholderIde || r.receiver || '—'}</td>
+                <td style="padding:7px 12px;text-align:center">${r.inI2c ? '<span style="color:var(--accent)">✓</span>' : '<span style="color:var(--text3)">–</span>'}</td>
+                <td style="padding:7px 12px;text-align:center">${r.inIde ? '<span style="color:var(--accent)">✓</span>' : '<span style="color:var(--red)">✗</span>'}</td>
+                <td style="padding:7px 12px;text-align:center">${r.inJt  ? '<span style="color:var(--accent)">✓</span>' : '<span style="color:var(--red)">✗</span>'}</td>
+                <td style="padding:7px 12px;font-size:11px;color:var(--text2)">${r.cardStatus || '—'}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+    });
+
+    inner.innerHTML = html;
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   DETAIL RECORDS
+═══════════════════════════════════════════════ */
+function renderDetailTabs(matched, partial, missing, extra, total) {
+  document.getElementById('tab-bar').innerHTML = `
+    <button class="tab active" onclick="switchTab('all',this)">All <span class="tab-count">${total}</span></button>
+    <button class="tab" onclick="switchTab('matched',this)">Matched <span class="tab-count">${matched}</span></button>
+    <button class="tab" onclick="switchTab('partial',this)">Partial <span class="tab-count">${partial}</span></button>
+    <button class="tab" onclick="switchTab('missing',this)">Missing in Idemia/J&T <span class="tab-count">${missing}</span></button>
+    <button class="tab" onclick="switchTab('extra',this)">Not in i2c <span class="tab-count">${extra}</span></button>`;
+}
+
+function switchTab(tab, el) {
+  currentTab = tab;
+  document.querySelectorAll('#tab-bar .tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  applyFilter();
+}
+
+function onSearch(val) { searchTerm = val.toLowerCase(); applyFilter(); }
+
+function applyFilter() {
+  const statusFilter = document.getElementById('status-filter')?.value || '';
+  let filtered = allRows;
+  if (currentTab !== 'all') filtered = filtered.filter(r => r.status === currentTab);
+  if (statusFilter) filtered = filtered.filter(r => r.status === statusFilter);
+  if (searchTerm) filtered = filtered.filter(r =>
+    r.key.toLowerCase().includes(searchTerm) ||
+    r.cardholderI2c.toLowerCase().includes(searchTerm) ||
+    r.cardholderIde.toLowerCase().includes(searchTerm) ||
+    r.receiver.toLowerCase().includes(searchTerm)
+  );
+  renderDetailTable(filtered);
+}
+
+function statusBadge(s) {
+  const map = { matched:['badge-matched','Matched'], partial:['badge-partial','Partial'], missing:['badge-missing','Missing'], extra:['badge-extra','Extra'] };
+  const [cls, lbl] = map[s] || ['',''];
+  return `<span class="badge ${cls}"><span class="badge-dot"></span>${lbl}</span>`;
+}
+
+function renderDetailTable(rows) {
+  const tbody = document.getElementById('tbl-body');
+  const countEl = document.getElementById('tbl-count');
+  if (!tbody) return;
+  const MAX = 500;
+  const shown = rows.slice(0, MAX);
+  if (!shown.length) {
+    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:40px;color:var(--text3)">No records match the current filter</td></tr>';
+    countEl.textContent = '';
+    return;
+  }
+  tbody.innerHTML = shown.map(r => `<tr>
+    <td class="td-mono">${r.key}</td>
+    <td>${statusBadge(r.status)}</td>
+    <td class="td-mono" style="font-size:11px">${r.batchDateRaw}</td>
+    <td class="td-mono" style="font-size:11px">${r.dispatchDate}</td>
+    <td class="td-mono" style="font-size:11px">${r.signingDate}</td>
+    <td class="td-center">${r.inI2c ? '<span class="check-yes">✓</span>' : '<span class="check-no">–</span>'}</td>
+    <td class="td-center">${r.inIde ? '<span class="check-yes">✓</span>' : '<span class="check-no">–</span>'}</td>
+    <td class="td-center">${r.inJt  ? '<span class="check-yes">✓</span>' : '<span class="check-no">–</span>'}</td>
+    <td title="${r.cardholderI2c || r.cardholderIde || r.receiver}" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.cardholderI2c || r.cardholderIde || r.receiver}</td>
+    <td style="font-size:11px;color:var(--text2)">${r.cardStatus}</td>
+    <td style="font-size:11px;color:var(--text2)">${r.orderStatus}</td>
+  </tr>`).join('');
+  countEl.textContent = `Showing ${shown.length.toLocaleString()} of ${rows.length.toLocaleString()} records${rows.length > MAX ? ' — export for full dataset' : ''}`;
+}
+
+/* ═══════════════════════════════════════════════
+   EXPORTS
+═══════════════════════════════════════════════ */
+function dlCSV(content, filename) {
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = filename; a.click();
+}
+
+function exportDailySummaryCSV() {
+  const header = ['Batch Date','Total Cards','Matched','Variance','Match %','Status','Missing in Idemia','Missing in J&T','Not in i2c'];
+  const rows = dailySummary.map(d => [
+    fmtBatchDate(d.dateISO), d.total, d.matched, d.variance, d.matchPct + '%',
+    d.hasVariance ? 'With variance' : '100% Matched',
+    d.missingIde, d.missingJt, d.notInI2c
+  ].join(','));
+  dlCSV([header.join(','), ...rows].join('\n'), 'ZED_Recon_DailySummary_' + new Date().toISOString().slice(0,10) + '.csv');
+}
+
+function exportDetailCSV() {
+  const statusFilter = document.getElementById('status-filter')?.value || '';
+  let filtered = allRows;
+  if (currentTab !== 'all') filtered = filtered.filter(r => r.status === currentTab);
+  if (statusFilter) filtered = filtered.filter(r => r.status === statusFilter);
+  if (searchTerm) filtered = filtered.filter(r =>
+    r.key.toLowerCase().includes(searchTerm) ||
+    r.cardholderI2c.toLowerCase().includes(searchTerm) ||
+    r.cardholderIde.toLowerCase().includes(searchTerm)
+  );
+  const header = ['Card Ref No','Status','In i2c','In Idemia','In J&T','Batch Date (i2c)','Dispatch Date (Idemia)','Submission Date (J&T)','Cardholder (i2c)','Cardholder (Idemia)','Receiver (J&T)','Card Status','Delivery Status','Variance Type'];
+  const rows = filtered.map(r => [
+    r.key, r.status,
+    r.inI2c?'Y':'N', r.inIde?'Y':'N', r.inJt?'Y':'N',
+    r.batchDateRaw, r.dispatchDate, r.signingDate,
+    '"'+r.cardholderI2c+'"', '"'+r.cardholderIde+'"', '"'+r.receiver+'"',
+    r.cardStatus, r.orderStatus, '"'+(r.varianceType||'')+'"'
+  ].join(','));
+  dlCSV([header.join(','), ...rows].join('\n'), 'ZED_Recon_Detail_' + new Date().toISOString().slice(0,10) + (currentTab !== 'all' ? '_' + currentTab : '') + '.csv');
+}
+</script>
+</body>
+</html>
